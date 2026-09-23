@@ -58,7 +58,7 @@ jobs:
             pkg-config
 
           python -m pip install --upgrade pip setuptools wheel
-          python -m pip install weasyprint reportlab fpdf2 jinja2 markdown
+          python -m pip install -r requirements.txt
 
       - name: Set up Android SDK Environment
         run: |
