@@ -1,0 +1,141 @@
+name: Android CI - PyPrint WeasyPrint APK & Test Suite
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+    inputs:
+      run_full_tests:
+        description: 'Run comprehensive unit and Robolectric tests'
+        required: false
+        default: 'true'
+        type: boolean
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    name: Build Debug APK & Run Test Suite
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up JDK 21 (Eclipse Temurin)
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
+      - name: Set up Python 3.11 (Chaquopy Host Compiler)
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install WeasyPrint & System Rendering Dependencies
+        run: |
+          echo "Installing host libraries for WeasyPrint, Cairo, Pango, and Fontconfig..."
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            libcairo2 \
+            libpango-1.0-0 \
+            libpangocairo-1.0-0 \
+            libgdk-pixbuf2.0-0 \
+            libffi-dev \
+            shared-mime-info \
+            fonts-dejavu-core \
+            fonts-liberation \
+            ghostscript \
+            pkg-config
+
+          python -m pip install --upgrade pip setuptools wheel
+          python -m pip install weasyprint reportlab fpdf2 jinja2 markdown
+
+      - name: Set up Android SDK Environment
+        run: |
+          echo "Verifying Android SDK installation..."
+          echo "ANDROID_HOME: $ANDROID_HOME"
+          yes | sdkmanager --licenses || true
+
+      - name: Restore Debug Keystore & Secrets
+        run: |
+          # 1. Restore debug.keystore if base64 file exists and keystore is absent
+          if [ -f "debug.keystore.base64" ] && [ ! -f "debug.keystore" ]; then
+            echo "Restoring debug.keystore from debug.keystore.base64..."
+            base64 -d debug.keystore.base64 > debug.keystore
+          fi
+
+          # 2. Ensure .env file exists for Secrets Gradle Plugin
+          if [ ! -f ".env" ]; then
+            if [ -f ".env.example" ]; then
+              echo "Initializing .env from .env.example..."
+              cp .env.example .env
+            else
+              echo "Creating empty .env..."
+              touch .env
+            fi
+          fi
+
+          # 3. Ensure gradlew is executable
+          chmod +x ./gradlew
+
+      - name: Set up Gradle with Caching
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.3.1'
+          cache-read-only: ${{ github.ref != 'refs/heads/main' && github.ref != 'refs/heads/master' }}
+
+      - name: Validate Project Configuration & Python Requirements
+        run: |
+          echo "Running Chaquopy python requirements check and project config..."
+          ./gradlew :app:installDebugPythonRequirements --stacktrace
+
+      - name: Run Full Test Suite (Unit & Robolectric Tests)
+        if: ${{ github.event.inputs.run_full_tests != 'false' }}
+        run: |
+          echo "Running unit tests, Room DB tests, template validation, and calculations..."
+          ./gradlew :app:testDebugUnitTest --continue --stacktrace
+
+      - name: Build Debug APK
+        run: |
+          echo "Compiling and packaging PyPrint WeasyPrint Debug APK..."
+          ./gradlew :app:assembleDebug --stacktrace
+
+      - name: Inspect & Verify Generated APK
+        run: |
+          APK_FILE="app/build/outputs/apk/debug/app-debug.apk"
+          if [ -f "$APK_FILE" ]; then
+            echo "=== Debug APK generated successfully! ==="
+            ls -lh "$APK_FILE"
+            echo "SHA-256 Checksum:"
+            sha256sum "$APK_FILE"
+          else
+            echo "ERROR: Debug APK not found at $APK_FILE"
+            exit 1
+          fi
+
+      - name: Upload Test Reports
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: pyprint-test-reports
+          path: app/build/reports/tests/testDebugUnitTest/
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Upload Debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: pyprint-weasyprint-debug-apk
+          path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+          retention-days: 30

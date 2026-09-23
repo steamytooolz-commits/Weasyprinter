@@ -1,0 +1,14 @@
+<resources>
+    <string name="app_name">PyPrint</string>
+    <string name="title_generator">Python PDF Studio</string>
+    <string name="title_templates">Templates</string>
+    <string name="title_custom_html">Custom HTML &amp; CSS</string>
+    <string name="title_history">Generated PDFs</string>
+    <string name="title_python_repl">Python REPL</string>
+    <string name="title_environment">Python Runtime</string>
+    <string name="action_generate">Generate PDF</string>
+    <string name="action_preview">Preview Document</string>
+    <string name="action_share">Share PDF</string>
+    <string name="action_open">Open File</string>
+    <string name="desc_status">Engine Status</string>
+</resources>

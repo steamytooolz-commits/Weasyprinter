@@ -1,0 +1,6 @@
+{
+  "name": "PyPrint",
+  "description": "Native Python PDF generator using Chaquopy and WeasyPrint, producing invoices, reports, and certificates right on Android.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
