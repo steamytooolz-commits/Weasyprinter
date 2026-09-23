@@ -12,15 +12,8 @@ import time
 import logging
 from pathlib import Path
 
-# Android SELinux Hardening & Subprocess Safety
-try:
-    import ctypes.util
-    ctypes.util._findSoname_ldconfig = lambda name: None
-    ctypes.util._findLib_gcc = lambda name: None
-    ctypes.util._findLib_ld = lambda name: None
-    ctypes.util.find_library = lambda name: None
-except Exception:
-    pass
+from . import native_resolver
+native_resolver.resolve_native_libraries()
 
 try:
     import subprocess
@@ -254,6 +247,18 @@ class HTML:
         Renders the HTML + CSS content into a vector PDF.
         Supports file paths, file-like objects, or returns bytes if target is None.
         """
+        # Delegate to weasy_bridge if available for enhanced Android rendering
+        try:
+            import weasy_bridge
+            out_path = weasy_bridge.generate_pdf(self.html_content, output_path=target if isinstance(target, (str, Path)) else None)
+            if target is None and os.path.exists(out_path):
+                with open(out_path, "rb") as f:
+                    return f.read()
+            elif isinstance(target, (str, Path)):
+                return out_path
+        except Exception as bridge_err:
+            logger.info("Falling back to standard WeasyPrint PDF renderer: %s", bridge_err)
+
         from fpdf import FPDF, HTMLMixin
 
         combined_css = self._extract_and_combine_css(stylesheets)
@@ -287,18 +292,14 @@ class HTML:
         clean_html = clean_html.replace("“", '"').replace("”", '"').replace("’", "'").replace("‘", "'")
         clean_html = clean_html.replace("…", "...").replace("™", "TM").replace("©", "(c)").replace("®", "(R)")
 
-        # Strip DOCTYPE, html comments, and void meta/link tags for clean FPDF2 HTML rendering
+        # Strip DOCTYPE, html comments, head, style, and script blocks so raw CSS/scripts aren't rendered as visible text
         clean_html = re.sub(r'<!DOCTYPE[^>]*>', '', clean_html, flags=re.IGNORECASE)
         clean_html = re.sub(r'<!--.*?-->', '', clean_html, flags=re.DOTALL)
+        clean_html = re.sub(r'<style[^>]*>.*?</style>', '', clean_html, flags=re.DOTALL | re.IGNORECASE)
+        clean_html = re.sub(r'<script[^>]*>.*?</script>', '', clean_html, flags=re.DOTALL | re.IGNORECASE)
+        clean_html = re.sub(r'<head[^>]*>.*?</head>', '', clean_html, flags=re.DOTALL | re.IGNORECASE)
         clean_html = re.sub(r'<meta[^>]*>', '', clean_html, flags=re.IGNORECASE)
         clean_html = re.sub(r'<link[^>]*>', '', clean_html, flags=re.IGNORECASE)
-
-        # Inject combined styles
-        if combined_css and "<style" not in clean_html:
-            if "<head>" in clean_html:
-                clean_html = clean_html.replace("<head>", f"<head><style>{combined_css}</style>")
-            else:
-                clean_html = f"<style>{combined_css}</style>\n{clean_html}"
 
         try:
             pdf.write_html(clean_html)

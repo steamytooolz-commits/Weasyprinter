@@ -19,11 +19,8 @@ import time
 # violates SELinux policy, flooding the kernel audit buffer and triggering "audit: rate limit exceeded".
 # We immediately neutralize external subprocess search and return None safely in-process.
 try:
-    import ctypes.util
-    ctypes.util._findSoname_ldconfig = lambda name: None
-    ctypes.util._findLib_gcc = lambda name: None
-    ctypes.util._findLib_ld = lambda name: None
-    ctypes.util.find_library = lambda name: None
+    from weasyprint import native_resolver
+    native_resolver.resolve_native_libraries()
 except Exception:
     pass
 
@@ -174,12 +171,20 @@ def generate_pdf_fpdf(html_content, output_path, title="Document"):
     pdf.add_page()
     pdf.set_font("Helvetica", size=10)
 
+    import re
+    clean_html = re.sub(r'<!DOCTYPE[^>]*>', '', html_content, flags=re.IGNORECASE)
+    clean_html = re.sub(r'<!--.*?-->', '', clean_html, flags=re.DOTALL)
+    clean_html = re.sub(r'<style[^>]*>.*?</style>', '', clean_html, flags=re.DOTALL | re.IGNORECASE)
+    clean_html = re.sub(r'<script[^>]*>.*?</script>', '', clean_html, flags=re.DOTALL | re.IGNORECASE)
+    clean_html = re.sub(r'<head[^>]*>.*?</head>', '', clean_html, flags=re.DOTALL | re.IGNORECASE)
+    clean_html = re.sub(r'<meta[^>]*>', '', clean_html, flags=re.IGNORECASE)
+    clean_html = re.sub(r'<link[^>]*>', '', clean_html, flags=re.IGNORECASE)
+
     try:
-        pdf.write_html(html_content)
+        pdf.write_html(clean_html)
     except Exception:
         # Fallback to plain text if HTML contains unsupported tags
-        import re
-        clean_text = re.sub(r'<[^>]+>', ' ', html_content)
+        clean_text = re.sub(r'<[^>]+>', ' ', clean_html)
         clean_text = '\n'.join([line.strip() for line in clean_text.splitlines() if line.strip()])
         pdf.multi_cell(0, 6, clean_text)
 

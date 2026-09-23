@@ -82,6 +82,9 @@ chaquopy {
   defaultConfig {
     version = "3.11"
     pip {
+      install("weasyprint")
+      install("cffi")
+      install("pydyf")
       install("reportlab")
       install("fpdf2")
       install("jinja2")

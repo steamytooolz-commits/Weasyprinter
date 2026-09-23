@@ -26,9 +26,6 @@ class PyPrintApp : Application() {
                     Python.start(AndroidPlatform(this))
                     Log.d("PyPrintApp", "Chaquopy Python runtime started successfully.")
                 }
-                // Pre-load hardened pdf_engine module to ensure in-memory subprocess/find_library safety
-                val py = Python.getInstance()
-                py.getModule("pdf_engine")
             } catch (t: Throwable) {
                 Log.e("PyPrintApp", "Failed to start Python runtime", t)
             }
