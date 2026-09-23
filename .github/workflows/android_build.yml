@@ -1,0 +1,102 @@
+name: Android Build & APK Workflow
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build-debug-apk:
+    name: Build Debug APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
+      - name: Verify Python Requirements File
+        run: |
+          echo "Verifying presence of requirements.txt or pyproject.toml..."
+          if [ -f "requirements.txt" ]; then
+            echo "Found requirements.txt at root."
+          elif [ -f "pyproject.toml" ]; then
+            echo "Found pyproject.toml at root."
+          else
+            echo "Creating fallback requirements.txt to prevent setup-python cache failure..."
+            echo "weasyprint>=52.5" > requirements.txt
+            echo "reportlab>=4.0.0" >> requirements.txt
+            echo "fpdf2>=2.7.0" >> requirements.txt
+            echo "jinja2>=3.1.0" >> requirements.txt
+            echo "markdown>=3.4.0" >> requirements.txt
+          fi
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install System Rendering & Python Dependencies
+        run: |
+          echo "Installing host dependencies for WeasyPrint..."
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            libcairo2 \
+            libpango-1.0-0 \
+            libpangocairo-1.0-0 \
+            libgdk-pixbuf2.0-0 \
+            libffi-dev \
+            shared-mime-info \
+            fonts-dejavu-core \
+            fonts-liberation \
+            ghostscript \
+            pkg-config
+
+          python -m pip install --upgrade pip setuptools wheel
+          python -m pip install -r requirements.txt
+
+      - name: Restore Keystore & Setup Environment
+        run: |
+          if [ -f "debug.keystore.base64" ] && [ ! -f "debug.keystore" ]; then
+            echo "Restoring debug.keystore..."
+            base64 -d debug.keystore.base64 > debug.keystore
+          fi
+
+          if [ ! -f ".env" ]; then
+            if [ -f ".env.example" ]; then
+              cp .env.example .env
+            else
+              touch .env
+            fi
+          fi
+
+          chmod +x ./gradlew
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.3.1'
+
+      - name: Build Debug APK
+        run: |
+          echo "Building PyPrint Debug APK..."
+          ./gradlew :app:assembleDebug --stacktrace
+
+      - name: Upload Debug APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: pyprint-debug-apk
+          path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+          retention-days: 30
