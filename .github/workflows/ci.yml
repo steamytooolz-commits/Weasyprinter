@@ -68,10 +68,15 @@ jobs:
 
       - name: Restore Debug Keystore & Secrets
         run: |
-          # 1. Restore debug.keystore if base64 file exists and keystore is absent
-          if [ -f "debug.keystore.base64" ] && [ ! -f "debug.keystore" ]; then
+          # 1. Restore debug.keystore if base64 file exists, or generate fallback
+          if [ -f "debug.keystore.base64" ]; then
             echo "Restoring debug.keystore from debug.keystore.base64..."
-            base64 -d debug.keystore.base64 > debug.keystore
+            tr -d '\r\n' < debug.keystore.base64 | base64 -d > debug.keystore || true
+          fi
+
+          if [ ! -f "debug.keystore" ] || [ ! -s "debug.keystore" ]; then
+            echo "Generating fallback debug.keystore..."
+            keytool -genkey -v -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
           fi
 
           # 2. Ensure .env file exists for Secrets Gradle Plugin
